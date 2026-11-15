@@ -1,0 +1,9 @@
+{
+  "marcus_vane": { "voiceId": "667ad0c658654ef694cf5d83180d60a9", "profile": "Mature male; deep, authoritative, calm and controlled." },
+  "elena_cross": { "voiceId": "9c0e4d806ce74c0fbc978172ec34a195", "profile": "Mature female; precise, composed, confident and professional." },
+  "victor_hale": { "voiceId": "1893fcdc59914652a27d59a3076a98d5", "profile": "Deep male; slightly rough, serious, defensive and controlled." },
+  "nadia_sterling": { "voiceId": "8bc191d6676d49f28579e342097f9656", "profile": "Young adult female; expressive, intelligent and guarded." },
+  "adrian_cole": { "voiceId": "daf0cf25c97e43d18af1dae8674cd8c6", "profile": "Medium-low male; analytical, measured and observant." },
+  "silas_reed": { "voiceId": "3cbca1bb7f6d4ebda197374f80b40f91", "profile": "Mature male; smooth, persuasive, charming and evasive." },
+  "narrator": { "voiceId": "4e78b481042f485e8f9707e99f5c1670", "profile": "Deep cinematic voice; restrained investigative tone." }
+}
