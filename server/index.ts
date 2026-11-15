@@ -39,5 +39,9 @@ app.post('/api/accuse', (req, res) => {
   res.json({ correct, culprit: hiddenCase.culprit, reveal: hiddenCase.truth });
 });
 
+app.post('/api/timeout', (_req, res) => {
+  res.json({ timedOut: true, correct: false, culprit: hiddenCase.culprit, reveal: hiddenCase.truth });
+});
+
 const port = Number(process.env.PORT || 8787);
 app.listen(port, () => console.log(`Investigation API listening on http://localhost:${port}`));

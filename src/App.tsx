@@ -26,9 +26,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [playing, setPlaying] = useState<string | null>(null);
   const [clock, setClock] = useState(900);
-  const [startedAt] = useState(Date.now());
+  const [roundStarted, setRoundStarted] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [accuseOpen, setAccuseOpen] = useState(false);
-  const [result, setResult] = useState<{ correct: boolean; culprit: string; reveal: string } | null>(null);
+  const [result, setResult] = useState<{ correct: boolean; culprit: string; reveal: string; timedOut?: boolean } | null>(null);
   const [briefingOpen, setBriefingOpen] = useState(true);
   const [rollCallOpen, setRollCallOpen] = useState(true);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => readPreference('informant-theme', 'dark') === 'light' ? 'light' : 'dark');
@@ -44,10 +45,28 @@ export default function App() {
   const suspectReplyCount = Object.values(messages).flat().filter(message => message.role === 'suspect').length;
   const signalLevel = Math.min(100, 22 + evidenceCount * 9 + suspectReplyCount * 7 + (clock < 300 ? 15 : 0));
   const signalState = signalLevel >= 72 ? 'critical' : signalLevel >= 48 ? 'elevated' : 'steady';
-  const elapsed = useMemo(() => Math.floor((Date.now() - startedAt) / 1000), [startedAt, clock]);
+  useEffect(() => { setAtmosphereTension(signalLevel / 100); }, [signalLevel]);
+  const elapsed = useMemo(() => startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0, [startedAt, clock]);
 
   useEffect(() => { fetch('/api/case').then(r => r.json()).then(setCaseData).catch(() => undefined); }, []);
-  useEffect(() => { const id = window.setInterval(() => setClock(x => Math.max(0, x - 1)), 1000); return () => clearInterval(id); }, []);
+  useEffect(() => {
+    if (!roundStarted || result) return;
+    const id = window.setInterval(() => setClock(current => {
+      if (current <= 1) { window.clearInterval(id); return 0; }
+      return current - 1;
+    }), 1000);
+    return () => clearInterval(id);
+  }, [roundStarted, result]);
+  useEffect(() => {
+    if (!roundStarted || clock !== 0 || result) return;
+    let active = true;
+    fetch('/api/timeout', { method: 'POST' }).then(response => response.json()).then(data => {
+      if (active) setResult({ ...data, timedOut: true });
+    }).catch(() => {
+      if (active) setResult({ timedOut: true, correct: false, culprit: '', reveal: 'The investigation window expired before the case could be closed.' });
+    });
+    return () => { active = false; };
+  }, [roundStarted, clock, result]);
   useEffect(() => { try { window.localStorage.setItem('informant-theme', theme); } catch { /* storage can be unavailable in private contexts */ } }, [theme]);
   useEffect(() => { try { window.localStorage.setItem('informant-ambience', String(ambience)); } catch { /* storage can be unavailable in private contexts */ } }, [ambience]);
   useEffect(() => { setAtmosphereTension(signalLevel / 100); }, [signalLevel]);
@@ -105,6 +124,12 @@ export default function App() {
   const enterCaseBriefing = () => {
     if (ambience) void setAtmosphereEnabled(true);
     setRollCallOpen(false);
+  };
+  const beginInvestigation = () => {
+    setClock(900);
+    setStartedAt(Date.now());
+    setRoundStarted(true);
+    setBriefingOpen(false);
   };
   const adjustVolume = (value: number) => {
     setVolume(value);
@@ -183,8 +208,8 @@ export default function App() {
       <footer className="footer"><span>© NEXORA SYSTEMS / INTERNAL INTELLIGENCE</span><span><span className="live-dot"/> CLASSIFICATION: EYES ONLY</span><span>SESSION ELAPSED {formatTime(elapsed)}</span></footer>
     </main>
 
-    {briefingOpen && <div className="modal-scrim" onClick={() => setBriefingOpen(false)}><section className="briefing-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setBriefingOpen(false)}><X size={17}/></button><div className="eyebrow"><span className="eyebrow-line"/> CLASSIFIED CASE BRIEFING</div><div className="briefing-seal"><span>N</span></div><div className="micro-label">NEXORA SYSTEMS / INCIDENT RESPONSE</div><h2>The Aurora<br/><i>breach.</i></h2><p>{caseData.briefing}</p><div className="briefing-facts"><div><span>INCIDENT</span><b>CONFIDENTIAL RESEARCH LEAK</b></div><div><span>SUBJECTS</span><b>06 AUTHORIZED PERSONNEL</b></div><div><span>TIME LIMIT</span><b>15 MINUTES</b></div></div><button className="primary-button" onClick={() => setBriefingOpen(false)}>OPEN THE CASE FILE <ChevronRight size={15}/></button><small>ALL ACTIVITY IS RECORDED / AUTHORIZATION 09-441</small></section></div>}
+    {briefingOpen && <div className="modal-scrim" onClick={() => setBriefingOpen(false)}><section className="briefing-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setBriefingOpen(false)}><X size={17}/></button><div className="eyebrow"><span className="eyebrow-line"/> CLASSIFIED CASE BRIEFING</div><div className="briefing-seal"><span>N</span></div><div className="micro-label">NEXORA SYSTEMS / INCIDENT RESPONSE</div><h2>The Aurora<br/><i>breach.</i></h2><p>{caseData.briefing}</p><div className="briefing-facts"><div><span>INCIDENT</span><b>CONFIDENTIAL RESEARCH LEAK</b></div><div><span>SUBJECTS</span><b>06 AUTHORIZED PERSONNEL</b></div><div><span>TIME LIMIT</span><b>15 MINUTES</b></div></div><button className="primary-button" onClick={beginInvestigation}>OPEN THE CASE FILE <ChevronRight size={15}/></button><small>ALL ACTIVITY IS RECORDED / AUTHORIZATION 09-441</small></section></div>}
     {accuseOpen && <div className="modal-scrim" onClick={() => setAccuseOpen(false)}><section className="accuse-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAccuseOpen(false)}><X size={17}/></button><div className="micro-label">FINAL ACTION / CASE 09-441</div><h2>Who leaked <i>AURORA?</i></h2><p>Submit your accusation to close the active investigation. Your evidence file will be reviewed against the recovered event chain.</p><div className="accuse-choices">{caseData.suspects.map(p => <button key={p.id} onClick={() => void accuse(p.id)}><span className="compact-avatar"><CharacterPortrait id={p.id} name={p.name} initials={p.initials}/></span><span><b>{p.name}</b><small>{p.role}</small></span><ChevronRight size={16}/></button>)}</div><button className="cancel-button" onClick={() => setAccuseOpen(false)}>RETURN TO INVESTIGATION</button></section></div>}
-    {result && <div className="modal-scrim"><section className={`result-modal ${result.correct ? 'correct' : 'incorrect'}`}><div className="result-symbol">{result.correct ? <Check size={26}/> : <ShieldAlert size={26}/>}</div><div className="eyebrow"><span className="eyebrow-line"/> INVESTIGATION CLOSED</div><h2>{result.correct ? 'You found the informant.' : 'The accusation was wrong.'}</h2><div className="result-culprit">THE SOURCE WAS <b>{caseData.suspects.find(p => p.id === result.culprit)?.name.toUpperCase()}</b></div><p>{result.reveal}</p><button className="primary-button" onClick={() => { setResult(null); setBriefingOpen(true); setMessages({}); setSelectedEvidence([]); setClock(900); }}>REOPEN CASE FILE <ChevronRight size={15}/></button></section></div>}
+    {result && <div className="modal-scrim"><section className={`result-modal ${result.correct ? 'correct' : 'incorrect'} ${result.timedOut ? 'timedout' : ''}`}><div className="result-symbol">{result.correct ? <Check size={26}/> : <ShieldAlert size={26}/>}</div><div className="eyebrow"><span className="eyebrow-line"/> {result.timedOut ? 'INVESTIGATION WINDOW CLOSED' : 'INVESTIGATION CLOSED'}</div><h2>{result.timedOut ? 'Time is up.' : result.correct ? 'You found the informant.' : 'The accusation was wrong.'}</h2><div className="result-culprit">THE SOURCE WAS <b>{caseData.suspects.find(p => p.id === result.culprit)?.name.toUpperCase()}</b></div><p>{result.timedOut ? `The 15-minute investigation window expired. ${result.reveal}` : result.reveal}</p><button className="primary-button" onClick={() => { setResult(null); setBriefingOpen(true); setRoundStarted(false); setStartedAt(null); setMessages({}); setSelectedEvidence([]); setClock(900); }}>REOPEN CASE FILE <ChevronRight size={15}/></button></section></div>}
   </div>;
 }

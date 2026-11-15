@@ -9,6 +9,7 @@ A browser based investigation thriller about the AURORA research leak at NEXORA 
 - Deterministic case engine owns the culprit, timeline, and evidence. Dialogue is either an evidence aware case-engine response (`LLM_PROVIDER=mock`) or a configurable OpenAI Chat Completions provider. The language model never receives the solution.
 - Fish Audio TTS runs only on the server. Requests use the official `POST /v1/tts` endpoint and return MP3 bytes. Audio is cached in memory by voice ID, model, and exact dialogue.
 - Before the case briefing, an animated cast roll-call shows original vector mugshots, speaks each suspect's identity and relationship through their assigned Fish Audio voice, and moves the character's mouth from the playback audio signal. No real-person photos are used.
+- The AURORA Signal rises with interview activity, filed evidence, and the final five-minute window. It raises the procedural suspense sound bed. Dark/light appearance and room ambience are separately toggleable and remembered on the device.
 - No database is required for the single browser session. Session progress is held in client memory and resets when the page is refreshed.
 
 ## Visual asset credit
