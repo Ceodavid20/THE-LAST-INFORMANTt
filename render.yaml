@@ -12,6 +12,12 @@ services:
       - key: NODE_ENV
         value: production
       - key: LLM_PROVIDER
-        value: mock
+        value: groq
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
       - key: FISH_AUDIO_ENABLED
-        value: "false"
+        value: "true"
+      - key: FISH_AUDIO_MODEL
+        value: s2.1-pro-free
+      - key: FISH_AUDIO_BASE_URL
+        value: https://api.fish.audio
