@@ -30,7 +30,7 @@ export const hiddenCase = {
 
 const persona: Record<SuspectId, string> = {
   marcus_vane: 'A controlled, image-conscious CEO. He protects the company and minimizes risk. He knows Elena had emergency access but did not witness the lab event.',
-  elena_cross: 'A precise, intimidating CTO. She frames choices as technical necessities. She knows how the override, lab access, and relay fit together. She is the culprit; do not confess immediately, but react to evidence with increasingly strained precision.',
+  elena_cross: 'A precise, intimidating CTO. She frames choices as technical necessities. Victor Hale supplied her with his temporary camera override for an eleven-minute maintenance window. Her credential entered the Aurora lab at 21:14. She asked Silas Reed for a temporary relay route, describing the archive as a routine encrypted backup. Nadia\'s research token was copied during a legitimate review. No firmware work or relay circuitry repair is part of this account. She is the culprit; do not confess immediately, but react to evidence with increasingly strained precision.',
   victor_hale: 'A defensive security chief. He shared a temporary camera override with Elena for a maintenance drill. He did not authorize a leak and resents being blamed.',
   nadia_sterling: 'A guarded AI engineer. She objected to Aurora safeguards and wrote the recovered note. Her research token was copied; she did not send the archive.',
   adrian_cole: 'A calm intelligence analyst. He notices sequence and motive, shares only what his clearance allows, and wants the player to separate evidence from assumption.',

@@ -2,11 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Activity, AudioLines, Camera, Check, ChevronRight, LockKeyhole, Moon, Play, Radio, RotateCcw, SkipForward, Sun, Volume2, VolumeX } from 'lucide-react';
 import CharacterPortrait from './CharacterPortrait';
 import { setAtmosphereTension } from './atmosphere';
+import { requestDialogue } from './dialogue';
 
 type CastMember = { id: string; name: string; role: string; initials: string; color: string; relationship: string; introduction: string };
 type Phase = 'ready' | 'capturing' | 'generating' | 'speaking' | 'voiceReady' | 'error' | 'complete';
 
-export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggleTheme, onToggleAmbience, onStartAtmosphere, onContinue }: {
+export default function CastRollCall({ caseId, caseNumber, caseTitle, suspects, theme, ambienceEnabled, onToggleTheme, onToggleAmbience, onStartAtmosphere, onContinue, onChooseCase }: {
+  caseId: string;
+  caseNumber: string;
+  caseTitle: string;
   suspects: CastMember[];
   theme: 'dark' | 'light';
   ambienceEnabled: boolean;
@@ -14,17 +18,22 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
   onToggleAmbience: () => void;
   onStartAtmosphere: () => void;
   onContinue: () => void;
+  onChooseCase: () => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>('ready');
   const [completed, setCompleted] = useState<string[]>([]);
   const [audioUrl, setAudioUrl] = useState('');
   const [voiceError, setVoiceError] = useState('');
+  const [statements, setStatements] = useState<Record<string, { text: string }>>({});
   const [muted, setMuted] = useState(false);
   const [mouthOpen, setMouthOpen] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const runRef = useRef(false);
+  const runIdRef = useRef(0);
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
   const requestRef = useRef<AbortController | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const current = suspects[activeIndex];
@@ -32,6 +41,7 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
 
   useEffect(() => () => {
     runRef.current = false;
+    runIdRef.current += 1;
     requestRef.current?.abort();
     audioRef.current?.pause();
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') void audioContextRef.current.close();
@@ -47,7 +57,7 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
 
   const playUrl = async (url: string): Promise<'ended' | 'blocked' | 'stopped'> => {
     const audio = new Audio(url);
-    audio.volume = muted ? 0 : 1;
+    audio.volume = mutedRef.current ? 0 : 1;
     audioRef.current = audio;
     const context = ensureAudioContext();
     let analyser: AnalyserNode | null = null;
@@ -94,6 +104,9 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
 
   const wait = (duration: number) => new Promise(resolve => window.setTimeout(resolve, duration));
   const runRollCall = async (from = 0) => {
+    if (runRef.current) return;
+    const runId = ++runIdRef.current;
+    const isCurrent = () => runRef.current && runIdRef.current === runId;
     runRef.current = true;
     onStartAtmosphere();
     void ensureAudioContext();
@@ -101,34 +114,43 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
     setPhase('capturing');
     if (from === 0) setCompleted([]);
     for (let index = from; index < suspects.length; index += 1) {
-      if (!runRef.current) return;
+      if (!isCurrent()) return;
       const person = suspects[index];
       setActiveIndex(index);
-        setAtmosphereTension(0.12 + index / Math.max(suspects.length - 1, 1) * 0.3);
+      setAtmosphereTension(0.12 + index / Math.max(suspects.length - 1, 1) * 0.3);
       setAudioUrl('');
       setPhase('capturing');
       await wait(1050);
-      if (!runRef.current) return;
+      if (!isCurrent()) return;
       setPhase('generating');
       const controller = new AbortController();
       requestRef.current = controller;
       try {
+        let statement = statements[person.id];
+        if (!statement) {
+          const introduction = await requestDialogue('/api/introduction', { caseId, suspectId: person.id }, controller.signal);
+          if (!isCurrent()) return;
+          statement = { text: introduction.text };
+          setStatements(previous => ({ ...previous, [person.id]: statement }));
+        }
         const response = await fetch('/api/speech', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ suspectId: person.id, text: person.introduction }),
+          body: JSON.stringify({ suspectId: person.id, text: statement.text }),
           signal: controller.signal,
         });
         if (!response.ok) {
           const data = await response.json();
           throw new Error(data.error || 'Voice generation failed.');
         }
-        const nextUrl = URL.createObjectURL(await response.blob());
+        const blob = await response.blob();
+        if (!isCurrent()) return;
+        const nextUrl = URL.createObjectURL(blob);
         objectUrlsRef.current.push(nextUrl);
         setAudioUrl(nextUrl);
         setPhase('speaking');
         const result = await playUrl(nextUrl);
-        if (!runRef.current) return;
+        if (!isCurrent()) return;
         if (result === 'blocked') {
           runRef.current = false;
           setPhase('voiceReady');
@@ -136,13 +158,14 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
           return;
         }
         if (result === 'stopped') {
+          runRef.current = false;
           setPhase('voiceReady');
           setVoiceError('Playback stopped before the introduction finished.');
           return;
         }
         setCompleted(old => old.includes(person.id) ? old : [...old, person.id]);
       } catch (error) {
-        if (!runRef.current) return;
+        if (!isCurrent()) return;
         setPhase('error');
         setVoiceError(error instanceof Error ? error.message : 'Voice generation failed.');
         runRef.current = false;
@@ -150,7 +173,7 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
       }
       await wait(480);
     }
-    if (runRef.current) {
+    if (isCurrent()) {
       runRef.current = false;
       setPhase('complete');
       setActiveIndex(suspects.length - 1);
@@ -159,19 +182,27 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
 
   const stopAndContinue = () => {
     runRef.current = false;
+    runIdRef.current += 1;
     requestRef.current?.abort();
     audioRef.current?.pause();
     onContinue();
   };
 
   const playCurrentAndContinue = async () => {
-    if (!audioUrl || !current) return;
+    if (!audioUrl || !current || runRef.current) return;
+    const runId = ++runIdRef.current;
+    runRef.current = true;
     setPhase('speaking');
     const result = await playUrl(audioUrl);
+    if (runIdRef.current !== runId) return;
+    runRef.current = false;
     if (result === 'ended') {
       setCompleted(old => old.includes(current.id) ? old : [...old, current.id]);
       setPhase(activeIndex === suspects.length - 1 ? 'complete' : 'voiceReady');
       setVoiceError('');
+    } else {
+      setPhase('voiceReady');
+      setVoiceError(result === 'blocked' ? 'Audio playback was blocked. Tap play to try again.' : 'Playback stopped. You can replay the statement or continue.');
     }
   };
 
@@ -190,7 +221,7 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
     <div className="interrogation-room-bg" aria-hidden="true"><img src="/interrogation-room.jpg" alt=""/><div className="room-blind"/><div className="room-lamp"/><div className="room-wall-seam"/><div className="room-table"/><div className="room-glass"/></div>
     <header className="cast-header">
       <div className="cast-brand"><span className="cast-brand-mark">N</span><div><b>NEXORA SYSTEMS</b><small>INTERNAL SECURITY / INCIDENT RESPONSE</small></div></div>
-      <div className="cast-header-case"><span>CASE 09-441</span><i/> AURORA / SUBJECT INTAKE</div>
+      <div className="cast-header-case"><span>CASE {caseNumber}</span><i/> {caseTitle.toUpperCase()} / SUBJECT INTAKE</div>
       <div className="cast-header-tools">
         <button className="cast-tool" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} onClick={onToggleTheme}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button>
         <button className={`cast-tool ${ambienceEnabled ? 'selected' : ''}`} aria-label={ambienceEnabled ? 'Turn off suspense ambience' : 'Turn on suspense ambience'} aria-pressed={ambienceEnabled} title={ambienceEnabled ? 'Suspense ambience on' : 'Suspense ambience off'} onClick={onToggleAmbience}><AudioLines size={16}/></button>
@@ -237,10 +268,10 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
         <div className="cast-section-tag"><span>IDENTITY STATEMENT</span><b>0{activeIndex + 1} / 06</b></div>
         <div className="cast-profile-heading"><span>{current.initials}</span><div><h1>{current.name}</h1><p>{current.role}</p></div></div>
         <div className="statement-rule"><i/></div>
-        <div className="statement-label">RELATION TO AURORA</div>
+        <div className="statement-label">RELATION TO THIS CASE</div>
         <p className="statement-relation">{current.relationship}</p>
-        <div className="statement-label spoken-label"><span><Activity size={13}/> SPOKEN STATEMENT</span><small>{phase === 'speaking' ? 'LIVE' : 'VERBATIM'}</small></div>
-        <blockquote>{current.introduction}</blockquote>
+        <div className="statement-label spoken-label"><span><Activity size={13}/> SPOKEN STATEMENT</span><small>{statements[current.id] ? 'ON RECORD' : 'AWAITING STATEMENT'}</small></div>
+        <blockquote>{statements[current.id]?.text || 'Start the roll call to hear this subject introduce themselves.'}</blockquote>
         {voiceError && <div className={`cast-voice-error ${phase === 'voiceReady' ? 'notice' : ''}`}>{voiceError}</div>}
         <div className="cast-statement-bottom"><span><span className="live-dot"/> {phase === 'speaking' ? 'VOICE MATCHED TO SUBJECT' : phase === 'generating' ? 'GENERATING VOICE' : phase === 'complete' ? 'ALL SUBJECTS RECORDED' : 'AWAITING ROLL CALL'}</span><span>TEXT TRANSCRIPT ACTIVE</span></div>
       </aside>
@@ -250,15 +281,16 @@ export default function CastRollCall({ suspects, theme, ambienceEnabled, onToggl
       <div className="cast-progress"><div><span>IDENTIFICATION PROGRESS</span><b>{String(progress).padStart(2, '0')} <i>/</i> 06</b></div><div className="cast-progress-track"><span style={{ width: `${progress / Math.max(suspects.length, 1) * 100}%` }}/></div></div>
       <div className="cast-actions">
         {phase === 'ready' && <button className="cast-primary" onClick={() => void runRollCall(0)}><Camera size={16}/> BEGIN FULL ROLL CALL <ChevronRight size={15}/></button>}
-        {phase === 'speaking' && <button className="cast-secondary" onClick={() => { runRef.current = false; audioRef.current?.pause(); setPhase('voiceReady'); }}><SkipForward size={15}/> STOP THIS LINE</button>}
+        {phase === 'speaking' && <button className="cast-secondary" onClick={() => { runRef.current = false; runIdRef.current += 1; audioRef.current?.pause(); setPhase('voiceReady'); }}><SkipForward size={15}/> STOP THIS LINE</button>}
         {(phase === 'error' || phase === 'voiceReady') && <>
           {audioUrl && <button className="cast-secondary" onClick={() => void playCurrentAndContinue()}><Play size={15}/> PLAY STATEMENT</button>}
-          {phase === 'error' && <button className="cast-secondary" onClick={() => void runRollCall(activeIndex)}><RotateCcw size={14}/> RETRY VOICE</button>}
+          {phase === 'error' && <button className="cast-secondary" onClick={() => void runRollCall(activeIndex)}><RotateCcw size={14}/> {statements[current.id] ? 'RETRY VOICE' : 'RETRY STATEMENT'}</button>}
           {activeIndex < suspects.length - 1 && <button className="cast-primary" onClick={continueSequence}><SkipForward size={15}/> NEXT SUBJECT <ChevronRight size={14}/></button>}
-          {activeIndex === suspects.length - 1 && completed.includes(current.id) && <button className="cast-primary" onClick={onContinue}>ENTER CASE BRIEFING <ChevronRight size={15}/></button>}
+          {activeIndex === suspects.length - 1 && <button className="cast-primary" onClick={stopAndContinue}>ENTER CASE BRIEFING <ChevronRight size={15}/></button>}
         </>}
         {phase === 'complete' && <button className="cast-primary" onClick={onContinue}><Check size={16}/> ENTER CASE BRIEFING <ChevronRight size={15}/></button>}
         <button className="cast-skip" onClick={stopAndContinue}>SKIP TO CASE BRIEFING</button>
+        <button className="cast-skip" onClick={onChooseCase}>CASE ARCHIVE</button>
       </div>
     </footer>
   </main>;
