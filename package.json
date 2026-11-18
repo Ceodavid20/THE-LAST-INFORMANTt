@@ -7,7 +7,8 @@
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite --host 0.0.0.0",
     "dev:server": "tsx watch server/index.ts",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && npm run build:server && vite build",
+    "build:server": "tsc -p tsconfig.server.json",
     "typecheck": "tsc -b --pretty",
     "test": "vitest run",
     "start": "node dist-server/index.js"

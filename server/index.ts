@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { suspects } from './case.js';
 import { findInvestigation, getDailyInvestigation, investigations, publicInvestigation } from './investigations.js';
@@ -83,5 +85,9 @@ app.post('/api/timeout', (req, res) => {
   res.json({ caseId: investigation.id, timedOut: true, correct: false, culprit: investigation.culprit, reveal: investigation.truth });
 });
 
+const clientDist = resolve(fileURLToPath(new URL('.', import.meta.url)), '../dist');
+app.use(express.static(clientDist));
+
 const port = Number(process.env.PORT || 8787);
-if (process.env.NODE_ENV !== 'test') app.listen(port, () => console.log(`Investigation API listening on http://localhost:${port}`));
+const host = process.env.HOST || '0.0.0.0';
+if (process.env.NODE_ENV !== 'test') app.listen(port, host, () => console.log(`Investigation API listening on http://${host}:${port}`));
